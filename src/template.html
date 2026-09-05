@@ -554,7 +554,9 @@ function trendCard(title, sub, legend){
 const fAvg = v => v==null ? '<span class="muted">—</span>' : fmt1(v);
 function withAvg(d){ d.cAvg = d.cc ? d.cp/d.cc : null; d.pAvg = d.pc ? d.pp/d.pc : null; d.bAvg = d.bc ? d.bp/d.bc : null; return d; }
 // 코칭반 · 자율연습반 · 초급1강 · 포화도 네 부문을 두 줄 머리로 묶은 표
-function coachGrid(C, firstLabel, rows){
+// opts: {id, sortable, total}  — sortable 이면 아랫줄 머리를 눌러 정렬, total 이 있으면 합계 줄
+function coachGrid(C, firstLabel, rows, opts){
+  opts=opts||{};
   const cols=[
     {key:'k'},
     {key:'cc',f:fInt,c:'grp-c'}, {key:'cp',f:fInt}, {key:'cAvg',f:fAvg},
@@ -562,12 +564,30 @@ function coachGrid(C, firstLabel, rows){
     {key:'bc',f:fInt,c:'grp-c'}, {key:'bp',f:fInt}, {key:'bAvg',f:fAvg},
     {key:'den',f:fInt,c:'grp-c'}, {key:'satC',f:fRate,c:'pct'}, {key:'satP',f:fRate,c:'pct'}
   ];
+  const st = opts.sortable ? (sortState[opts.id] || (sortState[opts.id]={key:'cc',dir:-1})) : null;
+  if(st){
+    rows=rows.slice().sort((x,y)=>{
+      const vx=x[st.key], vy=y[st.key];
+      if(st.key==='k') return st.dir*String(vx).localeCompare(String(vy),'ko');
+      return st.dir*((vx==null?-1e18:vx)-(vy==null?-1e18:vy)) || y.cc-x.cc;
+    });
+  }
+  const th=(key,label,cls)=>{
+    if(!st) return '<th'+(cls?' class="'+cls+'"':'')+'>'+label+'</th>';
+    return '<th class="sortable'+(cls?' '+cls:'')+'" data-table="'+opts.id+'" data-key="'+key+'"'+(st.key===key?' aria-sort="'+(st.dir<0?'descending':'ascending')+'"':'')+'>'+label+'</th>';
+  };
+  const cell=(c,r)=>'<td'+(c.c?' class="'+c.c+'"':'')+'>'+(c.f ? c.f(r[c.key]) : esc(r[c.key]))+'</td>';
   let h='<div class="tbl-wrap"><table class="cg"><colgroup><col class="first"><col span="12"></colgroup><thead>'
     +'<tr class="g"><th></th><th colspan="3" class="grp-c">'+esc(C.coach)+'</th><th colspan="3" class="grp-c">'+esc(C.practice)+'</th><th colspan="3" class="grp-c">'+esc(C.baseGroup)+'</th><th colspan="3" class="grp-c">공급 포화도 (전달 '+esc(C.base)+' 대비)</th></tr>'
-    +'<tr><th>'+firstLabel+'</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">전달 '+esc(C.base)+' 인원</th><th>횟수 기준</th><th>인원 기준</th></tr>'
+    +'<tr>'+th('k',firstLabel)+th('cc','횟수','grp-c')+th('cp','인원')+th('cAvg','평균 인원')
+    +th('pc','횟수','grp-c')+th('pp','인원')+th('pAvg','평균 인원')
+    +th('bc','횟수','grp-c')+th('bp','인원')+th('bAvg','평균 인원')
+    +th('den','전달 '+esc(C.base)+' 인원','grp-c')+th('satC','횟수 기준')+th('satP','인원 기준')+'</tr>'
     +'</thead><tbody>';
-  rows.forEach(r=>{ h+='<tr'+(r._cls?' class="'+r._cls+'"':'')+'>'; cols.forEach(c=>{ h+='<td'+(c.c?' class="'+c.c+'"':'')+'>'+(c.f ? c.f(r[c.key]) : esc(r[c.key]))+'</td>'; }); h+='</tr>'; });
-  return h+'</tbody></table></div>';
+  rows.forEach(r=>{ h+='<tr'+(r._cls?' class="'+r._cls+'"':'')+'>'; cols.forEach(c=>{ h+=cell(c,r); }); h+='</tr>'; });
+  h+='</tbody>';
+  if(opts.total){ h+='<tfoot><tr class="total">'; cols.forEach(c=>{ h+=cell(c,opts.total); }); h+='</tr></tfoot>'; }
+  return h+'</table></div>';
 }
 function coachMonthTable(C, S){
   const p=period();
@@ -597,17 +617,9 @@ function coachYearTable(C, S){
   return coachGrid(C, '연도', rows);
 }
 function coachVenueTable(C, a, b, tot){
-  const rows=coachByVenue(C,a,b);
+  const rows=coachByVenue(C,a,b).map(withAvg);
   if(!rows.length) return emptyMsg();
-  const cols=[
-    {key:'k', label:'강습장'},
-    {key:'cc', label:esc(C.coach)+' 횟수', fmt:fInt, cls:'grp-c'}, {key:'cp', label:esc(C.coach)+' 인원', fmt:fInt},
-    {key:'pc', label:esc(C.practice)+' 횟수', fmt:fInt, cls:'grp-c'}, {key:'pp', label:esc(C.practice)+' 인원', fmt:fInt},
-    {key:'bp', label:esc(C.base)+' 인원', fmt:fInt, cls:'grp-c'}, {key:'den', label:'전달 '+esc(C.base)+' 인원', fmt:fInt},
-    {key:'satC', label:'공급 포화도 (횟수)', fmt:fRate, cls:'grp-c pct'}, {key:'satP', label:'공급 포화도 (인원)', fmt:fRate, cls:'pct'}
-  ];
-  const total=Object.assign({k:'합계'}, tot);
-  return gridTable('cv', cols, rows, total, {defaultKey:'cc'});
+  return coachGrid(C, '강습장', rows, {id:'cv', sortable:true, total:withAvg(Object.assign({k:'합계'}, tot))});
 }
 
 // ── 툴팁 ────────────────────────────────────────────────
