@@ -68,16 +68,15 @@ button{cursor:pointer}
 .ro-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-bottom:10px}
 .ro-head h2{margin:0;font-size:15px;font-weight:600}
 .ro-head .period{font-family:var(--mono);font-size:13px;color:var(--deep-muted);letter-spacing:.04em}
-.ro-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.ro-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .ro{background:rgba(255,255,255,.035);border:1px solid var(--deep-line);border-radius:10px;padding:10px 14px 8px;min-width:0}
-.ro .lbl{font-size:11px;color:var(--deep-muted);letter-spacing:.06em}
+.ro .lbl{font-size:11px;color:var(--deep-muted);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ro .val{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1.15;letter-spacing:.01em;white-space:nowrap}
 .ro .val small{font-family:var(--font);font-size:12px;font-weight:500;color:var(--deep-muted);margin-left:3px}
 .ro .delta{font-size:11.5px;color:var(--deep-muted);margin-top:3px;min-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ro .delta.up{color:var(--up)} .ro .delta.down{color:var(--down)}
 .ro .delta .vs{opacity:.7}
 .ro-note{font-size:12px;color:var(--deep-muted);margin-top:10px}
-@media (max-width:900px){.ro-grid{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:600px){.ro-grid{grid-template-columns:repeat(2,1fr)} .ro .val{font-size:25px}}
 
 /* ── 본문 ──────────────────────────────────────────────── */
@@ -99,6 +98,7 @@ main .wrap{padding-top:20px;padding-bottom:28px;display:grid;gap:16px}
 .trend{display:block;width:100%;height:auto;overflow:visible}
 .trend .ax{font-size:10.5px;fill:var(--ink-3)}
 .trend .ax-title{font-size:11px;fill:var(--ink-2);font-weight:600}
+.trend .grp{font-size:12.5px;fill:var(--ink);font-weight:700}
 .trend .yr{font-size:11px;fill:var(--ink);font-weight:700}
 .trend .hit{fill:transparent;cursor:pointer}
 .trend .hit:hover{fill:rgba(16,40,58,.06)}
@@ -128,8 +128,11 @@ th[aria-sort=descending]::after{content:" ▾";color:var(--water)}
 th[aria-sort=ascending]::after{content:" ▴";color:var(--water)}
 th:first-child,td:first-child{text-align:left}
 tbody tr:hover td{background:var(--card-2)}
+tbody tr.sel td{background:var(--water-soft);font-weight:600}
 tr.total td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 td.ratio{min-width:130px}
+td.pct{color:var(--water-ink);font-weight:600}
+th.grp-c,td.grp-c{border-left:1px solid var(--line-2)}
 .ratio-bar{display:inline-block;height:6px;background:var(--water);border-radius:2px;vertical-align:middle;margin-right:6px}
 /* 인원 구성 매트릭스 */
 .mx th.h,.mx td.h{text-align:center;padding:6px 4px;min-width:40px}
@@ -139,7 +142,7 @@ td.ratio{min-width:130px}
 .mx td.tot{font-weight:700}
 
 /* 툴팁 */
-.tip{position:fixed;z-index:10;background:var(--deep);color:#fff;font-size:12px;line-height:1.5;padding:8px 10px;border-radius:8px;pointer-events:none;box-shadow:0 6px 20px rgba(10,47,66,.28);max-width:260px}
+.tip{position:fixed;z-index:10;background:var(--deep);color:#fff;font-size:12px;line-height:1.5;padding:8px 10px;border-radius:8px;pointer-events:none;box-shadow:0 6px 20px rgba(10,47,66,.28);max-width:280px}
 .tip b{display:block;margin-bottom:1px}
 .tip .dim{color:var(--deep-muted)}
 
@@ -160,6 +163,7 @@ footer b{color:var(--ink-2);font-weight:600}
     <button role="tab" data-tab="inst" aria-selected="false">강사별</button>
     <button role="tab" data-tab="cls" aria-selected="false">수업종류별</button>
     <button role="tab" data-tab="venue" aria-selected="false">강습장별</button>
+    <button role="tab" data-tab="coach" aria-selected="false">코칭반</button>
   </nav>
 </div></header>
 
@@ -172,7 +176,7 @@ footer b{color:var(--ink-2);font-weight:600}
     <button class="ib" id="nextM" aria-label="다음 달">›</button>
     <button class="chip" id="rangeBtn" aria-pressed="false">기간으로 보기</button>
   </div>
-  <div class="ctl"><span class="ctl-label">수업종류</span>
+  <div class="ctl" id="unitWrap"><span class="ctl-label">수업종류</span>
     <div class="seg" data-role="unit" role="group" aria-label="수업종류 단위"><button data-unit="big" aria-pressed="true">대분류</button><button data-unit="small" aria-pressed="false">세부</button></div>
   </div>
 </div></section>
@@ -189,12 +193,12 @@ const D = /*__DATA__*/;
 const CAP = D.meta.sizeCap || 11;
 const NM = D.months.length;
 const LAST = D.months[NM-1];
-const TABS = ['all','inst','cls','venue'];
+const TABS = ['all','inst','cls','venue','coach'];
 const ENTITY_LABEL = {inst:'강사', cls:'수업종류', venue:'강습장'};
 
 const state = {tab:'all', id:null, m:LAST, to:LAST, range:false, unit:'big', pct:false};
 const sortState = {};
-let lastSeries = null, resizeTimer = null;
+let lastDraw = null, resizeTimer = null;
 
 // ── 도우미 ──────────────────────────────────────────────
 const $ = (s, el) => (el||document).querySelector(s);
@@ -203,6 +207,8 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 const fmt = n => Math.round(n).toLocaleString('ko-KR');
 const fmt1 = x => (Math.round(x*10)/10).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1});
 const fmtPct = p => (p>=10 ? Math.round(p) : Math.round(p*10)/10) + '%';
+const fInt = v => v==null ? '<span class="muted">—</span>' : fmt(v);
+const fRate = v => v==null ? '<span class="muted">—</span>' : fmt1(v)+'%';
 const mLabel = m => { const y=m.slice(0,4), mo=+m.slice(5); return y+'년 '+mo+'월'; };
 const clsName = ci => state.unit==='big' ? D.classes[ci].b : D.classes[ci].s;
 const clsList = () => state.unit==='big' ? D.bigs.slice() : D.classes.map(c=>c.s);
@@ -229,7 +235,7 @@ function rollup(pred, keyOf){
 function sumMap(map){ const t=agg(); map.forEach(a=>merge(t,a)); return t; }
 const inRange = (a,b) => c => c[0]>=a && c[0]<=b;
 const both = (f,g) => c => f(c) && g(c);
-function entityPred(){ if(state.tab==='all') return function(){ return true; }; const k=KEY[state.tab]; return c => k(c)===state.id; }
+function entityPred(){ if(state.tab==='all' || state.tab==='coach') return function(){ return true; }; const k=KEY[state.tab]; return c => k(c)===state.id; }
 
 function kpis(pred, a, b){
   const p = both(inRange(a,b), pred);
@@ -248,6 +254,48 @@ function trendSeries(pred){
   return s;
 }
 
+// ── 코칭반 탭 계산 ───────────────────────────────────────
+// 일반 코칭반·자율연습반만 (딥풀 제외), 초급1강 = 세부 '초급 1강'. 0명 수업 제외.
+// 포화도 = (코칭반 + 자율연습반) ÷ 전달 초급1강 참가 인원 × 100
+const isCoach = ci => D.classes[ci].b==='코칭반';
+const isPractice = ci => D.classes[ci].b==='자율연습반';
+const isBasic1 = ci => D.classes[ci].s==='초급 1강';
+function coachBlank(){ return {cc:0, cp:0, pc:0, pp:0, bc:0, bp:0}; }
+function coachAdd(d, ci, n, cnt){
+  if(n<=0) return;
+  if(isCoach(ci)){ d.cc+=cnt; d.cp+=n*cnt; }
+  else if(isPractice(ci)){ d.pc+=cnt; d.pp+=n*cnt; }
+  else if(isBasic1(ci)){ d.bc+=cnt; d.bp+=n*cnt; }
+}
+function coachRates(d, den){
+  d.den = den; d.satC = den ? (d.cc+d.pc)/den*100 : null; d.satP = den ? (d.cp+d.pp)/den*100 : null; return d;
+}
+function coachSeries(){
+  const out = D.months.map(coachBlank);
+  for(const c of D.cells) coachAdd(out[c[0]], c[2], c[4], c[5]);
+  out.forEach((d,i)=> coachRates(d, i>0 ? out[i-1].bp : null));
+  return out;
+}
+function coachAgg(S, a, b){
+  const t = coachBlank();
+  for(let i=a;i<=b;i++){ const d=S[i]; t.cc+=d.cc; t.cp+=d.cp; t.pc+=d.pc; t.pp+=d.pp; t.bc+=d.bc; t.bp+=d.bp; }
+  let den=null; if(a>=1){ den=0; for(let i=a-1;i<=b-1;i++) den+=S[i].bp; }
+  return coachRates(t, den);
+}
+function coachByVenue(a, b){
+  const map=new Map();
+  const get = v => { let d=map.get(v); if(!d){ d=coachBlank(); d.k=v; d.prev=0; map.set(v,d); } return d; };
+  for(const c of D.cells){
+    const ci=c[2], n=c[4], cnt=c[5]; if(n<=0) continue;
+    if(!(isCoach(ci)||isPractice(ci)||isBasic1(ci))) continue;
+    const v=D.venues[c[3]];
+    if(c[0]>=a && c[0]<=b) coachAdd(get(v), ci, n, cnt);
+    if(a>=1 && c[0]>=a-1 && c[0]<=b-1 && isBasic1(ci)) get(v).prev+=n*cnt;
+  }
+  const rows=[]; map.forEach(d=>{ if(d.cc||d.pc||d.bp||d.prev){ coachRates(d, a>=1 ? d.prev : null); rows.push(d); } });
+  return rows;
+}
+
 // ── URL 해시 ────────────────────────────────────────────
 function readHash(){
   const p = new URLSearchParams(location.hash.slice(1));
@@ -260,7 +308,7 @@ function readHash(){
 }
 function writeHash(){
   const p = new URLSearchParams();
-  p.set('tab',state.tab); if(state.id && state.tab!=='all') p.set('id',state.id);
+  p.set('tab',state.tab); if(state.id && ENTITY_LABEL[state.tab]) p.set('id',state.id);
   p.set('m',state.m); if(state.range) p.set('to',state.to);
   if(state.unit!=='big') p.set('unit',state.unit); if(state.pct) p.set('pct','1');
   history.replaceState(null,'','#'+p.toString());
@@ -274,33 +322,31 @@ function emptyMsg(){ return '<div class="empty">이 기간에 진행한 수업�
 function pctSeg(){ return '<div class="seg" data-role="pct" role="group" aria-label="표시 단위"><button data-pct="0" aria-pressed="'+(!state.pct)+'">횟수</button><button data-pct="1" aria-pressed="'+state.pct+'">비율</button></div>'; }
 function mxNote(){ return state.pct ? '각 칸은 그 줄 합계에서 차지하는 비율입니다. 색이 진할수록 횟수가 많습니다.' : '몇 명짜리 수업을 몇 번 했는지. 색이 진할수록 많습니다.'; }
 function unitNote(){ return state.unit==='big' ? '대분류 기준 · 위쪽 "세부"를 누르면 강별로 나뉩니다' : '세부 수업 기준'; }
+const LEGEND = '<div class="legend"><span class="c"><i></i>수업 횟수</span><span class="p"><i></i>인원</span></div>';
 
-function delta(cur, prev, isRate, neutral){
-  if(prev==null) return '<div class="delta">비교할 이전 기간 없음</div>';
-  const d = cur-prev;
-  if(Math.abs(d)<0.05) return '<div class="delta">이전 기간과 같음</div>';
-  const cls = neutral ? '' : (d>0?'up':'down');
-  const arrow = d>0?'▲':'▼';
-  const body = isRate ? fmt1(Math.abs(d)) : fmt(Math.abs(d)) + (prev ? ' ('+fmtPct(Math.abs(d)/prev*100)+')' : '');
-  return '<div class="delta '+cls+'">'+arrow+' '+body+' <span class="vs">이전 기간 대비</span></div>';
-}
-function readoutHTML(cur, prev){
-  const title = state.tab==='all' ? '전체 강습 현황' : esc(state.id)+' <span class="muted">·</span> '+ENTITY_LABEL[state.tab]+' 현황';
-  let items = [['수업 횟수','classes','회'], ['총 인원','people','명'], ['수업당 평균','avg','명',true]];
-  if(state.tab==='inst') items = items.concat([['수업종류 수','nCls','종'],['강습장 수','nVen','곳']]);
-  else if(state.tab==='cls') items = items.concat([['활동 강사','nInst','명'],['강습장 수','nVen','곳']]);
-  else if(state.tab==='venue') items = items.concat([['활동 강사','nInst','명'],['수업종류 수','nCls','종']]);
-  else items = items.concat([['활동 강사','nInst','명'],['0명 개설','zero','회',false,true]]);
-  let h = '<div class="ro-head"><h2>'+title+'</h2><span class="period">'+periodLabel()+'</span></div><div class="ro-grid">';
-  for(const it of items){
-    const v = cur[it[1]], pv = prev ? prev[it[1]] : null;
-    h += '<div class="ro"><div class="lbl">'+it[0]+'</div><div class="val">'+(it[3]?fmt1(v):fmt(v))+'<small>'+it[2]+'</small></div>'+delta(v,pv,it[3],it[4])+'</div>';
+// kind: 'int' (횟수·인원), 'dec' (평균 같은 소수), 'rate' (% 지표 → %p 차이). neutral: 색 없음
+function kpi(lbl, cur, prev, unit, kind, neutral){
+  kind = kind||'int';
+  const show = v => v==null ? '—' : kind==='int' ? fmt(v) : fmt1(v);
+  let d;
+  if(cur==null) d='<div class="delta">계산할 수 없음</div>';
+  else if(prev==null) d='<div class="delta">비교할 이전 기간 없음</div>';
+  else {
+    const diff=cur-prev;
+    if(Math.abs(diff)<0.05) d='<div class="delta">이전 기간과 같음</div>';
+    else {
+      const cls = neutral ? '' : (diff>0?'up':'down'), arrow = diff>0?'▲':'▼';
+      let body;
+      if(kind==='int') body = fmt(Math.abs(diff)) + (prev ? ' ('+fmtPct(Math.abs(diff)/prev*100)+')' : '');
+      else if(kind==='rate') body = fmt1(Math.abs(diff))+'%p';
+      else body = fmt1(Math.abs(diff));
+      d='<div class="delta '+cls+'">'+arrow+' '+body+' <span class="vs">이전 기간 대비</span></div>';
+    }
   }
-  h += '</div>';
-  h += '<div class="ro-note">'+(state.tab==='all'
-    ? '개설했지만 0명이었던 수업과 프리다이빙 이론 LIVE는 횟수·인원에 넣지 않았습니다.'
-    : '이 기간에 개설했지만 0명이었던 수업 '+fmt(cur.zero)+'회는 횟수·인원에 넣지 않았습니다.')+'</div>';
-  return h;
+  return '<div class="ro"><div class="lbl">'+lbl+'</div><div class="val">'+show(cur)+'<small>'+unit+'</small></div>'+d+'</div>';
+}
+function readoutHTML(title, items, note){
+  return '<div class="ro-head"><h2>'+title+'</h2><span class="period">'+periodLabel()+'</span></div><div class="ro-grid">'+items.join('')+'</div><div class="ro-note">'+note+'</div>';
 }
 
 function barList(map){
@@ -357,53 +403,141 @@ function matrix(map, rowLabel){
   return h;
 }
 
-// ── 월별 흐름 차트 (SVG) ─────────────────────────────────
-function drawTrend(series){
-  const el=$('#trend'); if(!el || !series) return;
+// 범용 표: cols=[{key,label,fmt,cls}], rows=객체 배열(r._cls 로 줄 강조), total=합계 줄 객체
+function gridTable(id, cols, rows, total, opts){
+  opts=opts||{};
+  const sortable = opts.sortable!==false;
+  const st = sortable ? (sortState[id] || (sortState[id]={key:opts.defaultKey||cols[1].key, dir:-1})) : null;
+  if(st){
+    rows = rows.slice().sort((x,y)=>{
+      const vx=x[st.key], vy=y[st.key];
+      if(typeof vx==='string' || typeof vy==='string') return st.dir*String(vx).localeCompare(String(vy),'ko');
+      return st.dir*((vx==null?-1e18:vx)-(vy==null?-1e18:vy));
+    });
+  }
+  let h='<div class="tbl-wrap"><table><thead><tr>';
+  cols.forEach(c=>{
+    const cl = c.cls ? ' class="'+c.cls+(sortable?' sortable':'')+'"' : (sortable ? ' class="sortable"' : '');
+    h += '<th'+cl+(sortable ? ' data-table="'+id+'" data-key="'+c.key+'"'+(st.key===c.key?' aria-sort="'+(st.dir<0?'descending':'ascending')+'"':'') : '')+'>'+c.label+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  rows.forEach(r=>{ h+='<tr'+(r._cls?' class="'+r._cls+'"':'')+'>'; cols.forEach(c=>{ h+='<td'+(c.cls?' class="'+c.cls+'"':'')+'>'+(c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key]))+'</td>'; }); h+='</tr>'; });
+  h+='</tbody>';
+  if(total){ h+='<tfoot><tr class="total">'; cols.forEach(c=>{ h+='<td'+(c.cls?' class="'+c.cls+'"':'')+'>'+(c.fmt ? c.fmt(total[c.key], total) : esc(total[c.key]))+'</td>'; }); h+='</tr></tfoot>'; }
+  return h+'</table></div>';
+}
+
+// ── 월별 흐름 차트 (SVG, 여러 지표를 위아래로 쌓음) ──────────
+// panels=[{label, values[], color, kind:'bar'|'line', h, fmt, group}], tipFn(i) → 툴팁 HTML
+function drawPanels(el, panels, tipFn){
+  if(!el) return;
   const W=Math.max(320, el.clientWidth||600);
-  const padL=44, padR=10, top=22, h1=108, gap=42, h2=78, bottom=30;
-  const H=top+h1+gap+h2+bottom;
-  const n=series.length, innerW=W-padL-padR, step=innerW/n, bw=Math.max(2, Math.min(18, step*0.62));
+  const padL=48, padR=12, top=8, bottom=30, titleH=20, groupH=30, gapH=12;
+  const n=NM, innerW=W-padL-padR, step=innerW/n, bw=Math.max(2, Math.min(18, step*0.62));
   const p=period(), a=p[0], b=p[1];
   const nice=v=>{ if(v<=0) return 1; const e=Math.pow(10,Math.floor(Math.log10(v))); const f=v/e; return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*e; };
-  let mc=1, mp=1; series.forEach(s=>{ if(s.classes>mc) mc=s.classes; if(s.people>mp) mp=s.people; });
-  const maxC=nice(mc), maxP=nice(mp);
-  const base1=top+h1, base2=top+h1+gap+h2;
-  const yC=v=>base1-v/maxC*h1, yP=v=>base2-v/maxP*h2;
-  let s='<svg class="trend" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" role="img" aria-label="월별 수업 횟수와 인원">';
-  s+='<rect x="'+(padL+a*step)+'" y="'+(top-8)+'" width="'+((b-a+1)*step)+'" height="'+(base2-top+8)+'" rx="4" fill="var(--sel-band)"/>';
-  [[yC,maxC,'수업 횟수',base1,top],[yP,maxP,'인원',base2,top+h1+gap]].forEach(pn=>{
-    const y=pn[0], max=pn[1];
-    [0.5,1].forEach(f=>{ const yy=y(max*f); s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--line-2)"/><text x="'+(padL-6)+'" y="'+(yy+3.5)+'" text-anchor="end" class="ax">'+fmt(max*f)+'</text>'; });
-    s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+pn[3]+'" y2="'+pn[3]+'" stroke="var(--line)"/>';
-    s+='<text x="'+padL+'" y="'+(pn[4]-8)+'" class="ax-title">'+pn[2]+'</text>';
+  let y=top, lastGroup=null; const items=[];
+  panels.forEach(pn=>{
+    if(pn.group && pn.group!==lastGroup){ y+=groupH; items.push({type:'group', label:pn.group, y:y-10}); lastGroup=pn.group; }
+    y+=titleH; const h=pn.h||64; items.push({type:'panel', pn:pn, y0:y, h:h}); y+=h+gapH;
   });
-  series.forEach((d,i)=>{
-    const x=padL+i*step+(step-bw)/2, sel=i>=a&&i<=b, op=sel?1:0.42;
-    const y1=yC(d.classes), y2=yP(d.people);
-    if(d.classes>0) s+='<rect x="'+x+'" y="'+y1+'" width="'+bw+'" height="'+(base1-y1)+'" rx="2" fill="var(--water)" opacity="'+op+'"/>';
-    if(d.people>0) s+='<rect x="'+x+'" y="'+y2+'" width="'+bw+'" height="'+(base2-y2)+'" rx="2" fill="var(--buoy)" opacity="'+op+'"/>';
-    if(sel && a===b && step>=14){ s+='<text x="'+(x+bw/2)+'" y="'+(y1-4)+'" text-anchor="middle" class="lab">'+fmt(d.classes)+'</text><text x="'+(x+bw/2)+'" y="'+(y2-4)+'" text-anchor="middle" class="lab">'+fmt(d.people)+'</text>'; }
+  const H=y-gapH+bottom;
+  let s='<svg class="trend" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" role="img" aria-label="월별 흐름">';
+  s+='<rect x="'+(padL+a*step)+'" y="'+top+'" width="'+((b-a+1)*step)+'" height="'+(H-bottom-top)+'" rx="4" fill="var(--sel-band)"/>';
+  items.forEach(it=>{
+    if(it.type==='group'){
+      s+='<text x="'+padL+'" y="'+it.y+'" class="grp">'+esc(it.label)+'</text>';
+      return;
+    }
+    const pn=it.pn, base=it.y0+it.h, vals=pn.values, f=pn.fmt||fmt;
+    let mx=0; vals.forEach(v=>{ if(v!=null && v>mx) mx=v; });
+    const max=nice(mx), yOf=v=>base - v/max*it.h;
+    [0.5,1].forEach(fr=>{ const yy=yOf(max*fr); s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--line-2)"/><text x="'+(padL-6)+'" y="'+(yy+3.5)+'" text-anchor="end" class="ax">'+f(max*fr)+'</text>'; });
+    s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+base+'" y2="'+base+'" stroke="var(--line)"/>';
+    s+='<text x="'+padL+'" y="'+(it.y0-6)+'" class="ax-title">'+esc(pn.label)+'</text>';
+    if(pn.kind==='line'){
+      let d='', pen=false; const pts=[];
+      vals.forEach((v,i)=>{ if(v==null){ pen=false; return; } const x=padL+i*step+step/2, yy=yOf(v); d+=(pen?'L':'M')+x.toFixed(1)+' '+yy.toFixed(1); pen=true; pts.push([i,x,yy,v]); });
+      s+='<path d="'+d+'" fill="none" stroke="'+pn.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+      pts.forEach(pt=>{ const sel=pt[0]>=a&&pt[0]<=b;
+        if(sel || step>=12) s+='<circle cx="'+pt[1]+'" cy="'+pt[2]+'" r="'+(sel?4:2.5)+'" fill="'+pn.color+'" stroke="var(--card)" stroke-width="1.5"/>';
+        if(sel && a===b) s+='<text x="'+pt[1]+'" y="'+(pt[2]-8)+'" text-anchor="middle" class="lab">'+f(pt[3])+'</text>';
+      });
+    } else {
+      vals.forEach((v,i)=>{ if(!v) return; const x=padL+i*step+(step-bw)/2, sel=i>=a&&i<=b, yy=yOf(v);
+        s+='<rect x="'+x+'" y="'+yy+'" width="'+bw+'" height="'+(base-yy)+'" rx="2" fill="'+pn.color+'" opacity="'+(sel?1:0.42)+'"/>';
+        if(sel && a===b && step>=14) s+='<text x="'+(x+bw/2)+'" y="'+(yy-4)+'" text-anchor="middle" class="lab">'+f(v)+'</text>';
+      });
+    }
   });
-  series.forEach((d,i)=>{
-    const m=D.months[i], mo=+m.slice(5), xc=padL+i*step+step/2;
+  D.months.forEach((m,i)=>{
+    const mo=+m.slice(5), xc=padL+i*step+step/2;
     if(mo===1 || i===0) s+='<text x="'+(padL+i*step+2)+'" y="'+(H-10)+'" class="yr">'+m.slice(0,4)+'</text>';
     else if(step>=22 && (mo-1)%3===0) s+='<text x="'+xc+'" y="'+(H-10)+'" text-anchor="middle" class="ax">'+mo+'월</text>';
   });
-  series.forEach((d,i)=>{ s+='<rect class="hit" data-i="'+i+'" x="'+(padL+i*step)+'" y="'+(top-8)+'" width="'+step+'" height="'+(base2-top+8)+'"/>'; });
+  D.months.forEach((m,i)=>{ s+='<rect class="hit" data-i="'+i+'" x="'+(padL+i*step)+'" y="'+top+'" width="'+step+'" height="'+(H-bottom-top)+'"/>'; });
   s+='</svg>';
   el.innerHTML=s;
   const svg=el.firstElementChild;
-  svg.addEventListener('mousemove', e=>{
-    const t=e.target.closest('.hit'); if(!t){ hideTip(); return; }
-    const i=+t.getAttribute('data-i'), d=series[i];
-    showTip(e, '<b>'+mLabel(D.months[i])+'</b>수업 '+fmt(d.classes)+'회 · 인원 '+fmt(d.people)+'명'+(d.classes?' · 평균 '+fmt1(d.people/d.classes)+'명':'')+(d.zero?'<br><span class="dim">0명 개설 '+fmt(d.zero)+'회</span>':'')+'<br><span class="dim">누르면 이 달로 이동</span>');
-  });
+  svg.addEventListener('mousemove', e=>{ const t=e.target.closest('.hit'); if(!t){ hideTip(); return; } showTip(e, tipFn(+t.getAttribute('data-i'))); });
   svg.addEventListener('mouseleave', hideTip);
   svg.addEventListener('click', e=>{ const t=e.target.closest('.hit'); if(!t) return; const m=D.months[+t.getAttribute('data-i')]; state.m=m; state.to=m; state.range=false; update(); });
 }
-function trendCard(title, sub){
-  return '<section class="card"><div class="card-head"><div><h3>'+title+'</h3><div class="sub">'+sub+'</div></div><div class="legend"><span class="c"><i></i>수업 횟수</span><span class="p"><i></i>인원</span></div></div><div class="trend-wrap" id="trend"></div></section>';
+function drawTrend(series){
+  drawPanels($('#trend'), [
+    {label:'수업 횟수', values:series.map(s=>s.classes), color:'var(--water)', h:108},
+    {label:'인원', values:series.map(s=>s.people), color:'var(--buoy)', h:78}
+  ], i=>{ const d=series[i];
+    return '<b>'+mLabel(D.months[i])+'</b>수업 '+fmt(d.classes)+'회 · 인원 '+fmt(d.people)+'명'+(d.classes?' · 평균 '+fmt1(d.people/d.classes)+'명':'')+(d.zero?'<br><span class="dim">0명 개설 '+fmt(d.zero)+'회</span>':'')+'<br><span class="dim">누르면 이 달로 이동</span>';
+  });
+}
+function drawCoachTrend(S){
+  const pct = v => fmt1(v)+'%';
+  drawPanels($('#trend'), [
+    {group:'코칭반', label:'운영 횟수', values:S.map(d=>d.cc), color:'var(--water)'},
+    {group:'코칭반', label:'참가 인원', values:S.map(d=>d.cp), color:'var(--buoy)'},
+    {group:'자율연습반', label:'운영 횟수', values:S.map(d=>d.pc), color:'var(--water)'},
+    {group:'자율연습반', label:'참가 인원', values:S.map(d=>d.pp), color:'var(--buoy)'},
+    {group:'초급 1강', label:'운영 횟수', values:S.map(d=>d.bc), color:'var(--water)'},
+    {group:'초급 1강', label:'참가 인원', values:S.map(d=>d.bp), color:'var(--buoy)'},
+    {group:'코칭반 + 자율연습반 포화도 (전달 초급1강 참가 인원 대비)', label:'횟수 포화도', values:S.map(d=>d.satC), color:'var(--water)', kind:'line', fmt:pct, h:72},
+    {group:'코칭반 + 자율연습반 포화도 (전달 초급1강 참가 인원 대비)', label:'인원 포화도', values:S.map(d=>d.satP), color:'var(--buoy)', kind:'line', fmt:pct, h:72}
+  ], i=>{ const d=S[i];
+    return '<b>'+mLabel(D.months[i])+'</b>코칭반 '+fmt(d.cc)+'회 · '+fmt(d.cp)+'명<br>자율연습반 '+fmt(d.pc)+'회 · '+fmt(d.pp)+'명<br>초급1강 '+fmt(d.bc)+'회 · '+fmt(d.bp)+'명'
+      +'<br><span class="dim">전달 초급1강 '+(d.den==null?'—':fmt(d.den)+'명')+'</span>'
+      +'<br>포화도 횟수 '+(d.satC==null?'—':fmt1(d.satC)+'%')+' · 인원 '+(d.satP==null?'—':fmt1(d.satP)+'%')
+      +'<br><span class="dim">누르면 이 달로 이동</span>';
+  });
+}
+function trendCard(title, sub, legend){
+  return '<section class="card"><div class="card-head"><div><h3>'+title+'</h3><div class="sub">'+sub+'</div></div>'+(legend||LEGEND)+'</div><div class="trend-wrap" id="trend"></div></section>';
+}
+
+// ── 코칭반 탭 표 ─────────────────────────────────────────
+function coachMonthTable(S){
+  const p=period();
+  const rows=S.map((d,i)=>Object.assign({k:mLabel(D.months[i]), _cls:(i>=p[0]&&i<=p[1])?'sel':''}, d)).reverse();
+  const cols=[
+    {key:'k', label:'월'},
+    {key:'cc', label:'코칭반 횟수', fmt:fInt, cls:'grp-c'}, {key:'cp', label:'코칭반 인원', fmt:fInt},
+    {key:'pc', label:'자율연습반 횟수', fmt:fInt, cls:'grp-c'}, {key:'pp', label:'자율연습반 인원', fmt:fInt},
+    {key:'bc', label:'초급1강 횟수', fmt:fInt, cls:'grp-c'}, {key:'bp', label:'초급1강 인원', fmt:fInt}, {key:'den', label:'전달 초급1강 인원', fmt:fInt},
+    {key:'satC', label:'횟수 포화도', fmt:fRate, cls:'grp-c pct'}, {key:'satP', label:'인원 포화도', fmt:fRate, cls:'pct'}
+  ];
+  return gridTable('cm', cols, rows, null, {sortable:false});
+}
+function coachVenueTable(a, b, tot){
+  const rows=coachByVenue(a,b);
+  if(!rows.length) return emptyMsg();
+  const cols=[
+    {key:'k', label:'강습장'},
+    {key:'cc', label:'코칭반 횟수', fmt:fInt, cls:'grp-c'}, {key:'cp', label:'코칭반 인원', fmt:fInt},
+    {key:'pc', label:'자율연습반 횟수', fmt:fInt, cls:'grp-c'}, {key:'pp', label:'자율연습반 인원', fmt:fInt},
+    {key:'bp', label:'초급1강 인원', fmt:fInt, cls:'grp-c'}, {key:'den', label:'전달 초급1강 인원', fmt:fInt},
+    {key:'satC', label:'횟수 포화도', fmt:fRate, cls:'grp-c pct'}, {key:'satP', label:'인원 포화도', fmt:fRate, cls:'pct'}
+  ];
+  const total=Object.assign({k:'합계'}, tot);
+  return gridTable('cv', cols, rows, total, {defaultKey:'cc'});
 }
 
 // ── 툴팁 ────────────────────────────────────────────────
@@ -446,36 +580,65 @@ function setUnit(u){
 // ── 화면 ────────────────────────────────────────────────
 function render(){
   $$('.tabs button').forEach(b=>b.setAttribute('aria-selected', String(b.getAttribute('data-tab')===state.tab)));
+  const isEntity = !!ENTITY_LABEL[state.tab];
   const entWrap=$('#entWrap');
-  if(state.tab==='all'){ entWrap.hidden=true; }
+  if(!isEntity){ entWrap.hidden=true; }
   else { entWrap.hidden=false; $('#entLabel').textContent=ENTITY_LABEL[state.tab]; $('#selEntity').innerHTML=entityOptionsHTML(); }
+  $('#unitWrap').hidden = (state.tab==='coach');
   $('#selM').value=state.m; $('#selTo').value=state.to; $('#rangeWrap').hidden=!state.range;
   $('#rangeBtn').setAttribute('aria-pressed', String(state.range));
   $$('.seg[data-role=unit] button').forEach(b=>b.setAttribute('aria-pressed', String(b.getAttribute('data-unit')===state.unit)));
 
-  const p=period(), a=p[0], b=p[1], len=b-a+1, pred=entityPred();
-  const cur=kpis(pred,a,b), prev=(a-len>=0)?kpis(pred,a-len,a-1):null;
-  $('#readout').innerHTML=readoutHTML(cur,prev);
-  const inP=both(inRange(a,b),pred);
-  lastSeries=trendSeries(pred);
+  const p=period(), a=p[0], b=p[1], len=b-a+1;
   let html='';
-  if(state.tab==='all'){
-    html+=trendCard('월별 흐름', mLabel(D.months[0])+'부터 매달 진행한 수업 횟수와 인원. 막대를 누르면 그 달로 이동합니다.');
-    const lg='<div class="legend"><span class="c"><i></i>수업 횟수</span><span class="p"><i></i>인원</span></div>';
-    html+='<div class="two">'+card('수업종류별', unitNote(), barList(rollup(inP, KEY.cls)), lg)+card('강습장별', '진행한 수업이 있는 곳만', barList(rollup(inP, KEY.venue)), lg)+'</div>';
+
+  if(state.tab==='coach'){
+    const S=coachSeries();
+    const cur=coachAgg(S,a,b), prev=(a-len>=0)?coachAgg(S,a-len,a-1):null;
+    const g=(k)=>prev?prev[k]:null;
+    $('#readout').innerHTML=readoutHTML('코칭반 · 연습 운영 현황', [
+      kpi('코칭반 횟수', cur.cc, g('cc'), '회'), kpi('코칭반 인원', cur.cp, g('cp'), '명'),
+      kpi('자율연습반 횟수', cur.pc, g('pc'), '회'), kpi('자율연습반 인원', cur.pp, g('pp'), '명'),
+      kpi('초급1강 인원', cur.bp, g('bp'), '명'),
+      kpi('횟수 포화도', cur.satC, g('satC'), '%', 'rate'), kpi('인원 포화도', cur.satP, g('satP'), '%', 'rate')
+    ], '포화도 = (코칭반 + 자율연습반) ÷ 전달 초급1강 참가 인원 × 100. 기간을 여러 달로 잡으면 각 달의 전달 인원을 더해 나눕니다. 딥풀 코칭반·딥풀 자율연습반은 넣지 않았고, 0명 수업은 세지 않았습니다.');
+    lastDraw=()=>drawCoachTrend(S);
+    html+=trendCard('코칭반 · 월별 흐름', '코칭반과 자율연습반이 초급1강 수료 인원에 비해 얼마나 열리고 채워지는지. 막대를 누르면 그 달로 이동합니다.', '<div class="legend"><span class="c"><i></i>횟수</span><span class="p"><i></i>인원</span></div>');
+    html+=card('월별 숫자', '위 차트와 같은 숫자입니다. 선택한 기간은 진하게 표시됩니다.', coachMonthTable(S));
+    html+=card('강습장별 포화도', periodLabel()+' 기준. 초급1강 인원은 그 강습장의 전달 인원입니다. 포화도가 높을수록 초급1강 수료 인원에 비해 연습 수업이 많이 열린 곳입니다.', coachVenueTable(a,b,cur));
   } else {
-    const ks = state.tab==='inst' ? ['cls','venue'] : state.tab==='cls' ? ['inst','venue'] : ['inst','cls'];
-    const L1=ENTITY_LABEL[ks[0]], L2=ENTITY_LABEL[ks[1]];
-    html+=trendCard(esc(state.id)+' · 월별 흐름', '전체 기간의 매달 수업 횟수와 인원. 막대를 누르면 그 달로 이동합니다.');
-    const m1=rollup(inP, KEY[ks[0]]), m2=rollup(inP, KEY[ks[1]]);
-    html+='<div class="two">'
-      +card(L1+'별 횟수와 인원', ks[0]==='cls'?unitNote():'', statTable(m1,'t1',L1))
-      +card(L2+'별 횟수와 인원', ks[1]==='cls'?unitNote():'', statTable(m2,'t2',L2))+'</div>';
-    html+=card(L1+'별 인원 구성', mxNote(), matrix(m1,L1), pctSeg());
-    html+=card(L2+'별 인원 구성', mxNote(), matrix(m2,L2), pctSeg());
+    const pred=entityPred();
+    const cur=kpis(pred,a,b), prev=(a-len>=0)?kpis(pred,a-len,a-1):null;
+    const g=(k)=>prev?prev[k]:null;
+    let items=[kpi('수업 횟수',cur.classes,g('classes'),'회'), kpi('총 인원',cur.people,g('people'),'명'), kpi('수업당 평균',cur.avg,g('avg'),'명','dec')];
+    let title, note;
+    if(state.tab==='inst'){ items.push(kpi('수업종류 수',cur.nCls,g('nCls'),'종'), kpi('강습장 수',cur.nVen,g('nVen'),'곳')); }
+    else if(state.tab==='cls'){ items.push(kpi('활동 강사',cur.nInst,g('nInst'),'명'), kpi('강습장 수',cur.nVen,g('nVen'),'곳')); }
+    else if(state.tab==='venue'){ items.push(kpi('활동 강사',cur.nInst,g('nInst'),'명'), kpi('수업종류 수',cur.nCls,g('nCls'),'종')); }
+    else { items.push(kpi('활동 강사',cur.nInst,g('nInst'),'명'), kpi('0명 개설',cur.zero,g('zero'),'회','int',true)); }
+    if(state.tab==='all'){ title='전체 강습 현황'; note='개설했지만 0명이었던 수업과 프리다이빙 이론 LIVE는 횟수·인원에 넣지 않았습니다.'; }
+    else { title=esc(state.id)+' <span class="muted">·</span> '+ENTITY_LABEL[state.tab]+' 현황'; note='이 기간에 개설했지만 0명이었던 수업 '+fmt(cur.zero)+'회는 횟수·인원에 넣지 않았습니다.'; }
+    $('#readout').innerHTML=readoutHTML(title, items, note);
+    const inP=both(inRange(a,b),pred);
+    const series=trendSeries(pred);
+    lastDraw=()=>drawTrend(series);
+    if(state.tab==='all'){
+      html+=trendCard('월별 흐름', mLabel(D.months[0])+'부터 매달 진행한 수업 횟수와 인원. 막대를 누르면 그 달로 이동합니다.');
+      html+='<div class="two">'+card('수업종류별', unitNote(), barList(rollup(inP, KEY.cls)), LEGEND)+card('강습장별', '진행한 수업이 있는 곳만', barList(rollup(inP, KEY.venue)), LEGEND)+'</div>';
+    } else {
+      const ks = state.tab==='inst' ? ['cls','venue'] : state.tab==='cls' ? ['inst','venue'] : ['inst','cls'];
+      const L1=ENTITY_LABEL[ks[0]], L2=ENTITY_LABEL[ks[1]];
+      html+=trendCard(esc(state.id)+' · 월별 흐름', '전체 기간의 매달 수업 횟수와 인원. 막대를 누르면 그 달로 이동합니다.');
+      const m1=rollup(inP, KEY[ks[0]]), m2=rollup(inP, KEY[ks[1]]);
+      html+='<div class="two">'
+        +card(L1+'별 횟수와 인원', ks[0]==='cls'?unitNote():'', statTable(m1,'t1',L1))
+        +card(L2+'별 횟수와 인원', ks[1]==='cls'?unitNote():'', statTable(m2,'t2',L2))+'</div>';
+      html+=card(L1+'별 인원 구성', mxNote(), matrix(m1,L1), pctSeg());
+      html+=card(L2+'별 인원 구성', mxNote(), matrix(m2,L2), pctSeg());
+    }
   }
   $('#view').innerHTML=html;
-  drawTrend(lastSeries);
+  lastDraw();
   hideTip();
 }
 function update(){ writeHash(); render(); }
@@ -485,7 +648,7 @@ function init(){
   const opts=D.months.map(m=>'<option value="'+m+'">'+mLabel(m)+'</option>').join('');
   $('#selM').innerHTML=opts; $('#selTo').innerHTML=opts;
   $('#dataMeta').textContent='데이터 '+mLabel(D.meta.lastMonth)+'까지 · '+D.meta.builtAt+' 갱신';
-  $('#foot').innerHTML='<b>숫자 읽는 법</b> — 인원은 출석 기준이며 결석은 뺐습니다. 개설했지만 0명이었던 수업은 횟수·인원에 넣지 않았습니다. 같은 시각·강사·수업명이 두 줄로 있으면 인원이 적은 한 줄만 셌습니다. 프리다이빙 이론 LIVE는 뺐습니다. '+CAP+'명 이상은 한 칸으로 묶었습니다.<br>원본: 예약 시스템 통계분석(그룹수업) 엑셀 · '+mLabel(D.meta.firstMonth)+' ~ '+mLabel(D.meta.lastMonth)+' · 수업 '+fmt(D.meta.records)+'건';
+  $('#foot').innerHTML='<b>숫자 읽는 법</b> — 인원은 출석 기준이며 결석은 뺐습니다. 개설했지만 0명이었던 수업은 횟수·인원에 넣지 않았습니다. 같은 시각·강사·수업명이 두 줄로 있으면 인원이 적은 한 줄만 셌습니다. 프리다이빙 이론 LIVE는 뺐습니다. '+CAP+'명 이상은 한 칸으로 묶었습니다. 코칭반 탭의 포화도는 (코칭반 + 자율연습반) ÷ 전달 초급1강 참가 인원 × 100 입니다.<br>원본: 예약 시스템 통계분석(그룹수업) 엑셀 · '+mLabel(D.meta.firstMonth)+' ~ '+mLabel(D.meta.lastMonth)+' · 수업 '+fmt(D.meta.records)+'건';
   readHash();
 
   $('.tabs').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; const t=b.getAttribute('data-tab'); if(t!==state.tab){ state.tab=t; state.id=null; update(); } });
@@ -504,9 +667,9 @@ function init(){
   document.addEventListener('click', e=>{
     const u=e.target.closest('.seg[data-role=unit] button'); if(u){ setUnit(u.getAttribute('data-unit')); return; }
     const pc=e.target.closest('.seg[data-role=pct] button'); if(pc){ state.pct=pc.getAttribute('data-pct')==='1'; update(); return; }
-    const th=e.target.closest('th.sortable'); if(th){ const id=th.getAttribute('data-table'), key=th.getAttribute('data-key'); const st=sortState[id]||(sortState[id]={key:'classes',dir:-1}); if(st.key===key) st.dir=-st.dir; else { st.key=key; st.dir=key==='k'?1:-1; } render(); }
+    const th=e.target.closest('th.sortable'); if(th){ const id=th.getAttribute('data-table'), key=th.getAttribute('data-key'); const st=sortState[id]||(sortState[id]={key:key,dir:-1}); if(st.key===key) st.dir=-st.dir; else { st.key=key; st.dir=key==='k'?1:-1; } render(); }
   });
-  window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>drawTrend(lastSeries),120); });
+  window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>{ if(lastDraw) lastDraw(); },120); });
   window.addEventListener('hashchange', ()=>{ readHash(); render(); });
   render();
 }
