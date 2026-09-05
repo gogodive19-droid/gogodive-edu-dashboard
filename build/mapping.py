@@ -22,8 +22,11 @@ class UnmappedClassName(Exception):
 EXCLUDED_PREFIXES = ("프리다이빙 이론",)
 
 # ── 대분류 표시 순서 ────────────────────────────────────────────────────────
-BIG_ORDER = ["초급", "중급", "마스터", "연습반", "코칭반", "체험",
+BIG_ORDER = ["초급", "중급", "마스터", "연습반", "코칭반", "딥풀 코칭반", "체험",
              "머메이드", "트레이닝", "스쿠버", "키즈", "모두", "대학생"]
+
+# ── 딥풀 강습장: 여기서 열린 코칭반은 표기와 상관없이 '딥풀 코칭반' ─────────
+DEEP_POOL_VENUES = {"용인 딥스테이션", "시흥 파라다이브", "가평 K26"}
 
 # ── 표기 2) "(강습장 약칭) 수업종류" 의 약칭 → 정식 강습장명 ─────────────────
 VENUE_PREFIX = {
@@ -182,4 +185,7 @@ def parse_class_name(raw):
     hit = match_class(_clean(cls_text))
     if hit is None:
         raise UnmappedClassName(raw)
-    return Parsed(hit[0], hit[1], venue)
+    big, small = hit
+    if small == "코칭반" and venue in DEEP_POOL_VENUES:      # 딥풀에서 연 코칭반은 따로 센다
+        big = small = "딥풀 코칭반"
+    return Parsed(big, small, venue)
