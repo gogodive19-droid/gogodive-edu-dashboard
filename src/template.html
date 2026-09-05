@@ -139,7 +139,13 @@ tbody tr.sel td{background:var(--water-soft);font-weight:600}
 tr.total td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 td.ratio{min-width:130px}
 td.pct{color:var(--water-ink);font-weight:600}
-th.grp-c,td.grp-c{border-left:1px solid var(--line-2)}
+th.grp-c,td.grp-c{border-left:2px solid var(--line)}
+/* 코칭반 월별·년별 표: 부문별 두 줄 머리, 고른 열 너비 */
+table.cg{table-layout:fixed;min-width:1040px}
+.cg th,.cg td{padding:7px 6px}
+.cg col.first{width:124px}
+.cg thead tr.g th{text-align:center;color:var(--ink);font-weight:700;border-bottom:1px solid var(--line-2);padding:5px 6px}
+.cg tbody td:first-child{font-weight:500}
 .ratio-bar{display:inline-block;height:6px;background:var(--water);border-radius:2px;vertical-align:middle;margin-right:6px}
 /* 인원 구성 매트릭스 */
 .mx th.h,.mx td.h{text-align:center;padding:6px 4px;min-width:40px}
@@ -533,17 +539,50 @@ function trendCard(title, sub, legend){
 }
 
 // ── 코칭반 탭 표 ─────────────────────────────────────────
+const fAvg = v => v==null ? '<span class="muted">—</span>' : fmt1(v);
+function withAvg(d){ d.cAvg = d.cc ? d.cp/d.cc : null; d.pAvg = d.pc ? d.pp/d.pc : null; d.bAvg = d.bc ? d.bp/d.bc : null; return d; }
+// 코칭반 · 자율연습반 · 초급1강 · 포화도 네 부문을 두 줄 머리로 묶은 표
+function coachGrid(firstLabel, rows){
+  const cols=[
+    {key:'k'},
+    {key:'cc',f:fInt,c:'grp-c'}, {key:'cp',f:fInt}, {key:'cAvg',f:fAvg},
+    {key:'pc',f:fInt,c:'grp-c'}, {key:'pp',f:fInt}, {key:'pAvg',f:fAvg},
+    {key:'bc',f:fInt,c:'grp-c'}, {key:'bp',f:fInt}, {key:'bAvg',f:fAvg},
+    {key:'den',f:fInt,c:'grp-c'}, {key:'satC',f:fRate,c:'pct'}, {key:'satP',f:fRate,c:'pct'}
+  ];
+  let h='<div class="tbl-wrap"><table class="cg"><colgroup><col class="first"><col span="12"></colgroup><thead>'
+    +'<tr class="g"><th></th><th colspan="3" class="grp-c">코칭반</th><th colspan="3" class="grp-c">자율연습반</th><th colspan="3" class="grp-c">초급 1강</th><th colspan="3" class="grp-c">포화도 (전달 초급1강 대비)</th></tr>'
+    +'<tr><th>'+firstLabel+'</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">전달 초급1강 인원</th><th>횟수 포화도</th><th>인원 포화도</th></tr>'
+    +'</thead><tbody>';
+  rows.forEach(r=>{ h+='<tr'+(r._cls?' class="'+r._cls+'"':'')+'>'; cols.forEach(c=>{ h+='<td'+(c.c?' class="'+c.c+'"':'')+'>'+(c.f ? c.f(r[c.key]) : esc(r[c.key]))+'</td>'; }); h+='</tr>'; });
+  return h+'</tbody></table></div>';
+}
 function coachMonthTable(S){
   const p=period();
-  const rows=S.map((d,i)=>Object.assign({k:mLabel(D.months[i]), _cls:(i>=p[0]&&i<=p[1])?'sel':''}, d)).reverse();
-  const cols=[
-    {key:'k', label:'월'},
-    {key:'cc', label:'코칭반 횟수', fmt:fInt, cls:'grp-c'}, {key:'cp', label:'코칭반 인원', fmt:fInt},
-    {key:'pc', label:'자율연습반 횟수', fmt:fInt, cls:'grp-c'}, {key:'pp', label:'자율연습반 인원', fmt:fInt},
-    {key:'bc', label:'초급1강 횟수', fmt:fInt, cls:'grp-c'}, {key:'bp', label:'초급1강 인원', fmt:fInt}, {key:'den', label:'전달 초급1강 인원', fmt:fInt},
-    {key:'satC', label:'횟수 포화도', fmt:fRate, cls:'grp-c pct'}, {key:'satP', label:'인원 포화도', fmt:fRate, cls:'pct'}
-  ];
-  return gridTable('cm', cols, rows, null, {sortable:false});
+  const rows=S.map((d,i)=>withAvg(Object.assign({k:mLabel(D.months[i]), _cls:(i>=p[0]&&i<=p[1])?'sel':''}, d))).reverse();
+  return coachGrid('월', rows);
+}
+function coachYearTable(S){
+  const p=period(), years=new Map();
+  D.months.forEach((m,i)=>{
+    const y=m.slice(0,4); let r=years.get(y);
+    if(!r){ r=coachBlank(); r.k=y; r.den=0; r.hasDen=false; r.numC=0; r.numP=0; r.first=m; r.last=m; r._cls=''; years.set(y,r); }
+    const d=S[i];
+    r.cc+=d.cc; r.cp+=d.cp; r.pc+=d.pc; r.pp+=d.pp; r.bc+=d.bc; r.bp+=d.bp; r.last=m;
+    if(d.den!=null){ r.den+=d.den; r.hasDen=true; r.numC+=d.cc+d.pc; r.numP+=d.cp+d.pp; }
+    if(i>=p[0] && i<=p[1]) r._cls='sel';
+  });
+  const rows=[];
+  years.forEach(r=>{
+    r.satC = (r.hasDen && r.den) ? r.numC/r.den*100 : null;
+    r.satP = (r.hasDen && r.den) ? r.numP/r.den*100 : null;
+    if(!r.hasDen) r.den=null;
+    const fm=+r.first.slice(5), lm=+r.last.slice(5);
+    r.k = r.k+'년'+((fm!==1 || lm!==12) ? ' ('+fm+'~'+lm+'월)' : '');
+    rows.push(withAvg(r));
+  });
+  rows.reverse();
+  return coachGrid('연도', rows);
 }
 function coachVenueTable(a, b, tot){
   const rows=coachByVenue(a,b);
@@ -627,7 +666,8 @@ function render(){
       +'<div class="fx"><span class="f">인원 포화도 = (코칭반 인원 + 자율연습반 인원) ÷ 전달 초급1강 인원 × 100</span><span>300%면 수료 1명당 연습 참가가 3회 있었던 셈</span></div>'
       +'<div class="fx muted">코칭반은 강사 수당이 나가는 수업이고 자율연습반은 나가지 않습니다. 딥풀 코칭반·딥풀 자율연습반은 넣지 않았습니다.</div></div>';
     html+=trendCard('코칭반 · 월별 흐름', '포화도 두 판은 세로축을 값 범위에 맞춰 0부터 시작하지 않고, 점선은 전체 기간 평균입니다. 막대를 누르면 그 달로 이동합니다.', '<div class="legend"><span class="c"><i></i>횟수</span><span class="p"><i></i>인원</span></div>');
-    html+=card('월별 숫자', '위 차트와 같은 숫자입니다. 선택한 기간은 진하게 표시됩니다.', coachMonthTable(S));
+    html+=card('월별 숫자', '위 차트와 같은 숫자입니다. 평균 인원은 수업 1회당 참가 인원이고, 선택한 기간은 진하게 표시됩니다.', coachMonthTable(S));
+    html+=card('년별 숫자', '연도별 합계입니다. 포화도는 전달 초급1강 인원이 있는 달만 더해 계산합니다(2024년은 2월부터). 선택한 기간이 든 연도는 진하게 표시됩니다.', coachYearTable(S));
     html+=card('강습장별 포화도', periodLabel()+' 기준. 초급1강 인원은 그 강습장의 전달 인원입니다. 포화도가 높을수록 초급1강 수료 인원에 비해 연습 수업이 많이 열린 곳입니다.', coachVenueTable(a,b,cur));
   } else {
     const pred=entityPred();
