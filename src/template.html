@@ -145,6 +145,7 @@ table.cg{table-layout:fixed;min-width:1040px}
 .cg th,.cg td{padding:7px 6px}
 .cg col.first{width:124px}
 .cg thead tr.g th{text-align:center;color:var(--ink);font-weight:700;border-bottom:1px solid var(--line-2);padding:5px 6px}
+.cg thead th{white-space:normal;line-height:1.3;vertical-align:bottom}
 .cg tbody td:first-child{font-weight:500}
 .ratio-bar{display:inline-block;height:6px;background:var(--water);border-radius:2px;vertical-align:middle;margin-right:6px}
 /* 인원 구성 매트릭스 */
@@ -177,6 +178,7 @@ footer b{color:var(--ink-2);font-weight:600}
     <button role="tab" data-tab="cls" aria-selected="false">수업종류별</button>
     <button role="tab" data-tab="venue" aria-selected="false">강습장별</button>
     <button role="tab" data-tab="coach" aria-selected="false">코칭반</button>
+    <button role="tab" data-tab="deep" aria-selected="false">딥풀 코칭반</button>
   </nav>
 </div></header>
 
@@ -206,7 +208,7 @@ const D = /*__DATA__*/;
 const CAP = D.meta.sizeCap || 11;
 const NM = D.months.length;
 const LAST = D.months[NM-1];
-const TABS = ['all','inst','cls','venue','coach'];
+const TABS = ['all','inst','cls','venue','coach','deep'];
 const ENTITY_LABEL = {inst:'강사', cls:'수업종류', venue:'강습장'};
 
 const state = {tab:'all', id:null, m:LAST, to:LAST, range:false, unit:'big', pct:false};
@@ -248,7 +250,7 @@ function rollup(pred, keyOf){
 function sumMap(map){ const t=agg(); map.forEach(a=>merge(t,a)); return t; }
 const inRange = (a,b) => c => c[0]>=a && c[0]<=b;
 const both = (f,g) => c => f(c) && g(c);
-function entityPred(){ if(state.tab==='all' || state.tab==='coach') return function(){ return true; }; const k=KEY[state.tab]; return c => k(c)===state.id; }
+function entityPred(){ if(!ENTITY_LABEL[state.tab]) return function(){ return true; }; const k=KEY[state.tab]; return c => k(c)===state.id; }
 
 function kpis(pred, a, b){
   const p = both(inRange(a,b), pred);
@@ -267,25 +269,33 @@ function trendSeries(pred){
   return s;
 }
 
-// ── 코칭반 탭 계산 ───────────────────────────────────────
-// 일반 코칭반·자율연습반만 (딥풀 제외), 초급1강 = 세부 '초급 1강'. 0명 수업 제외.
-// 포화도 = (코칭반 + 자율연습반) ÷ 전달 초급1강 참가 인원 × 100
-const isCoach = ci => D.classes[ci].b==='코칭반';
-const isPractice = ci => D.classes[ci].b==='자율연습반';
-const isBasic1 = ci => D.classes[ci].s==='초급 1강';
+// ── 코칭반 / 딥풀 코칭반 탭 계산 ─────────────────────────
+// 공급 포화도 = (코칭반 + 자율연습반) ÷ 전달 기준 수업 참가 인원 × 100. 0명 수업 제외.
+// 두 탭은 아래 설정(어떤 수업을 코칭반·자율연습반·기준 수업으로 볼지)만 다르다.
+const PRACTICE = {
+  coach: { label:'코칭반', coach:'코칭반', practice:'자율연습반', base:'초급1강', baseGroup:'초급 1강',
+           baseDesc:'초급1강을 들은 다음 달에 연습하러 온다고 보고 <b>전달</b> 초급1강 참가 인원으로 나눕니다.',
+           isBase: ci => D.classes[ci].s==='초급 1강',
+           excl:'딥풀 코칭반·딥풀 자율연습반은 넣지 않았습니다.' },
+  deep:  { label:'딥풀 코칭반', coach:'딥풀 코칭반', practice:'딥풀 자율연습반', base:'중급1강·마스터1강', baseGroup:'중급 1강 + 마스터 1-2강',
+           baseDesc:'중급 1강이나 마스터 1-2강(첫 마스터 수업)을 들은 다음 달에 딥풀에서 연습한다고 보고 <b>전달</b> 중급 1강 + 마스터 1-2강 참가 인원으로 나눕니다.',
+           isBase: ci => { const s=D.classes[ci].s; return s.indexOf('중급 1강')===0 || s.indexOf('마스터 1-2강')===0; },
+           excl:'일반 코칭반·자율연습반은 넣지 않았습니다.' }
+};
 function coachBlank(){ return {cc:0, cp:0, pc:0, pp:0, bc:0, bp:0}; }
-function coachAdd(d, ci, n, cnt){
+function coachAdd(C, d, ci, n, cnt){
   if(n<=0) return;
-  if(isCoach(ci)){ d.cc+=cnt; d.cp+=n*cnt; }
-  else if(isPractice(ci)){ d.pc+=cnt; d.pp+=n*cnt; }
-  else if(isBasic1(ci)){ d.bc+=cnt; d.bp+=n*cnt; }
+  const b=D.classes[ci].b;
+  if(b===C.coach){ d.cc+=cnt; d.cp+=n*cnt; }
+  else if(b===C.practice){ d.pc+=cnt; d.pp+=n*cnt; }
+  else if(C.isBase(ci)){ d.bc+=cnt; d.bp+=n*cnt; }
 }
 function coachRates(d, den){
   d.den = den; d.satC = den ? (d.cc+d.pc)/den*100 : null; d.satP = den ? (d.cp+d.pp)/den*100 : null; return d;
 }
-function coachSeries(){
+function coachSeries(C){
   const out = D.months.map(coachBlank);
-  for(const c of D.cells) coachAdd(out[c[0]], c[2], c[4], c[5]);
+  for(const c of D.cells) coachAdd(C, out[c[0]], c[2], c[4], c[5]);
   out.forEach((d,i)=> coachRates(d, i>0 ? out[i-1].bp : null));
   return out;
 }
@@ -295,15 +305,16 @@ function coachAgg(S, a, b){
   let den=null; if(a>=1){ den=0; for(let i=a-1;i<=b-1;i++) den+=S[i].bp; }
   return coachRates(t, den);
 }
-function coachByVenue(a, b){
+function coachByVenue(C, a, b){
   const map=new Map();
   const get = v => { let d=map.get(v); if(!d){ d=coachBlank(); d.k=v; d.prev=0; map.set(v,d); } return d; };
   for(const c of D.cells){
     const ci=c[2], n=c[4], cnt=c[5]; if(n<=0) continue;
-    if(!(isCoach(ci)||isPractice(ci)||isBasic1(ci))) continue;
+    const b0=D.classes[ci].b;
+    if(!(b0===C.coach || b0===C.practice || C.isBase(ci))) continue;
     const v=D.venues[c[3]];
-    if(c[0]>=a && c[0]<=b) coachAdd(get(v), ci, n, cnt);
-    if(a>=1 && c[0]>=a-1 && c[0]<=b-1 && isBasic1(ci)) get(v).prev+=n*cnt;
+    if(c[0]>=a && c[0]<=b) coachAdd(C, get(v), ci, n, cnt);
+    if(a>=1 && c[0]>=a-1 && c[0]<=b-1 && C.isBase(ci)) get(v).prev+=n*cnt;
   }
   const rows=[]; map.forEach(d=>{ if(d.cc||d.pc||d.bp||d.prev){ coachRates(d, a>=1 ? d.prev : null); rows.push(d); } });
   return rows;
@@ -514,22 +525,23 @@ function drawTrend(series){
     return '<b>'+mLabel(D.months[i])+'</b>수업 '+fmt(d.classes)+'회 · 인원 '+fmt(d.people)+'명'+(d.classes?' · 평균 '+fmt1(d.people/d.classes)+'명':'')+(d.zero?'<br><span class="dim">0명 개설 '+fmt(d.zero)+'회</span>':'')+'<br><span class="dim">누르면 이 달로 이동</span>';
   });
 }
-function drawCoachTrend(S){
+function drawCoachTrend(C, S){
   const pct = v => (Math.abs(v-Math.round(v))<1e-9 ? fmt(v) : fmt1(v))+'%';
   const mean = arr => { const v=arr.filter(x=>x!=null); return v.length ? v.reduce((p,q)=>p+q,0)/v.length : null; };
   const satC=S.map(d=>d.satC), satP=S.map(d=>d.satP);
+  const satGroup=C.coach+' + '+C.practice+' 공급 포화도 (전달 '+C.baseGroup+' 참가 인원 대비)';
   drawPanels($('#trend'), [
-    {group:'코칭반', label:'운영 횟수', values:S.map(d=>d.cc), color:'var(--water)'},
-    {group:'코칭반', label:'참가 인원', values:S.map(d=>d.cp), color:'var(--buoy)'},
-    {group:'자율연습반', label:'운영 횟수', values:S.map(d=>d.pc), color:'var(--water)'},
-    {group:'자율연습반', label:'참가 인원', values:S.map(d=>d.pp), color:'var(--buoy)'},
-    {group:'초급 1강', label:'운영 횟수', values:S.map(d=>d.bc), color:'var(--water)'},
-    {group:'초급 1강', label:'참가 인원', values:S.map(d=>d.bp), color:'var(--buoy)'},
-    {group:'코칭반 + 자율연습반 공급 포화도 (전달 초급1강 참가 인원 대비)', label:'공급 포화도 · 횟수 기준', values:satC, color:'var(--water)', kind:'line', fmt:pct, h:150, fit:true, avg:mean(satC)},
-    {group:'코칭반 + 자율연습반 공급 포화도 (전달 초급1강 참가 인원 대비)', label:'공급 포화도 · 인원 기준', values:satP, color:'var(--buoy)', kind:'line', fmt:pct, h:150, fit:true, avg:mean(satP)}
+    {group:C.coach, label:'운영 횟수', values:S.map(d=>d.cc), color:'var(--water)'},
+    {group:C.coach, label:'참가 인원', values:S.map(d=>d.cp), color:'var(--buoy)'},
+    {group:C.practice, label:'운영 횟수', values:S.map(d=>d.pc), color:'var(--water)'},
+    {group:C.practice, label:'참가 인원', values:S.map(d=>d.pp), color:'var(--buoy)'},
+    {group:C.baseGroup, label:'운영 횟수', values:S.map(d=>d.bc), color:'var(--water)'},
+    {group:C.baseGroup, label:'참가 인원', values:S.map(d=>d.bp), color:'var(--buoy)'},
+    {group:satGroup, label:'공급 포화도 · 횟수 기준', values:satC, color:'var(--water)', kind:'line', fmt:pct, h:150, fit:true, avg:mean(satC)},
+    {group:satGroup, label:'공급 포화도 · 인원 기준', values:satP, color:'var(--buoy)', kind:'line', fmt:pct, h:150, fit:true, avg:mean(satP)}
   ], i=>{ const d=S[i];
-    return '<b>'+mLabel(D.months[i])+'</b>코칭반 '+fmt(d.cc)+'회 · '+fmt(d.cp)+'명<br>자율연습반 '+fmt(d.pc)+'회 · '+fmt(d.pp)+'명<br>초급1강 '+fmt(d.bc)+'회 · '+fmt(d.bp)+'명'
-      +'<br><span class="dim">전달 초급1강 '+(d.den==null?'—':fmt(d.den)+'명')+'</span>'
+    return '<b>'+mLabel(D.months[i])+'</b>'+esc(C.coach)+' '+fmt(d.cc)+'회 · '+fmt(d.cp)+'명<br>'+esc(C.practice)+' '+fmt(d.pc)+'회 · '+fmt(d.pp)+'명<br>'+esc(C.base)+' '+fmt(d.bc)+'회 · '+fmt(d.bp)+'명'
+      +'<br><span class="dim">전달 '+esc(C.base)+' '+(d.den==null?'—':fmt(d.den)+'명')+'</span>'
       +'<br>공급 포화도 횟수 기준 '+(d.satC==null?'—':fmt1(d.satC)+'%')+' · 인원 기준 '+(d.satP==null?'—':fmt1(d.satP)+'%')
       +'<br><span class="dim">누르면 이 달로 이동</span>';
   });
@@ -542,7 +554,7 @@ function trendCard(title, sub, legend){
 const fAvg = v => v==null ? '<span class="muted">—</span>' : fmt1(v);
 function withAvg(d){ d.cAvg = d.cc ? d.cp/d.cc : null; d.pAvg = d.pc ? d.pp/d.pc : null; d.bAvg = d.bc ? d.bp/d.bc : null; return d; }
 // 코칭반 · 자율연습반 · 초급1강 · 포화도 네 부문을 두 줄 머리로 묶은 표
-function coachGrid(firstLabel, rows){
+function coachGrid(C, firstLabel, rows){
   const cols=[
     {key:'k'},
     {key:'cc',f:fInt,c:'grp-c'}, {key:'cp',f:fInt}, {key:'cAvg',f:fAvg},
@@ -551,18 +563,18 @@ function coachGrid(firstLabel, rows){
     {key:'den',f:fInt,c:'grp-c'}, {key:'satC',f:fRate,c:'pct'}, {key:'satP',f:fRate,c:'pct'}
   ];
   let h='<div class="tbl-wrap"><table class="cg"><colgroup><col class="first"><col span="12"></colgroup><thead>'
-    +'<tr class="g"><th></th><th colspan="3" class="grp-c">코칭반</th><th colspan="3" class="grp-c">자율연습반</th><th colspan="3" class="grp-c">초급 1강</th><th colspan="3" class="grp-c">공급 포화도 (전달 초급1강 대비)</th></tr>'
-    +'<tr><th>'+firstLabel+'</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">전달 초급1강 인원</th><th>횟수 기준</th><th>인원 기준</th></tr>'
+    +'<tr class="g"><th></th><th colspan="3" class="grp-c">'+esc(C.coach)+'</th><th colspan="3" class="grp-c">'+esc(C.practice)+'</th><th colspan="3" class="grp-c">'+esc(C.baseGroup)+'</th><th colspan="3" class="grp-c">공급 포화도 (전달 '+esc(C.base)+' 대비)</th></tr>'
+    +'<tr><th>'+firstLabel+'</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">횟수</th><th>인원</th><th>평균 인원</th><th class="grp-c">전달 '+esc(C.base)+' 인원</th><th>횟수 기준</th><th>인원 기준</th></tr>'
     +'</thead><tbody>';
   rows.forEach(r=>{ h+='<tr'+(r._cls?' class="'+r._cls+'"':'')+'>'; cols.forEach(c=>{ h+='<td'+(c.c?' class="'+c.c+'"':'')+'>'+(c.f ? c.f(r[c.key]) : esc(r[c.key]))+'</td>'; }); h+='</tr>'; });
   return h+'</tbody></table></div>';
 }
-function coachMonthTable(S){
+function coachMonthTable(C, S){
   const p=period();
   const rows=S.map((d,i)=>withAvg(Object.assign({k:mLabel(D.months[i]), _cls:(i>=p[0]&&i<=p[1])?'sel':''}, d))).reverse();
-  return coachGrid('월', rows);
+  return coachGrid(C, '월', rows);
 }
-function coachYearTable(S){
+function coachYearTable(C, S){
   const p=period(), years=new Map();
   D.months.forEach((m,i)=>{
     const y=m.slice(0,4); let r=years.get(y);
@@ -582,16 +594,16 @@ function coachYearTable(S){
     rows.push(withAvg(r));
   });
   rows.reverse();
-  return coachGrid('연도', rows);
+  return coachGrid(C, '연도', rows);
 }
-function coachVenueTable(a, b, tot){
-  const rows=coachByVenue(a,b);
+function coachVenueTable(C, a, b, tot){
+  const rows=coachByVenue(C,a,b);
   if(!rows.length) return emptyMsg();
   const cols=[
     {key:'k', label:'강습장'},
-    {key:'cc', label:'코칭반 횟수', fmt:fInt, cls:'grp-c'}, {key:'cp', label:'코칭반 인원', fmt:fInt},
-    {key:'pc', label:'자율연습반 횟수', fmt:fInt, cls:'grp-c'}, {key:'pp', label:'자율연습반 인원', fmt:fInt},
-    {key:'bp', label:'초급1강 인원', fmt:fInt, cls:'grp-c'}, {key:'den', label:'전달 초급1강 인원', fmt:fInt},
+    {key:'cc', label:esc(C.coach)+' 횟수', fmt:fInt, cls:'grp-c'}, {key:'cp', label:esc(C.coach)+' 인원', fmt:fInt},
+    {key:'pc', label:esc(C.practice)+' 횟수', fmt:fInt, cls:'grp-c'}, {key:'pp', label:esc(C.practice)+' 인원', fmt:fInt},
+    {key:'bp', label:esc(C.base)+' 인원', fmt:fInt, cls:'grp-c'}, {key:'den', label:'전달 '+esc(C.base)+' 인원', fmt:fInt},
     {key:'satC', label:'공급 포화도 (횟수)', fmt:fRate, cls:'grp-c pct'}, {key:'satP', label:'공급 포화도 (인원)', fmt:fRate, cls:'pct'}
   ];
   const total=Object.assign({k:'합계'}, tot);
@@ -642,7 +654,7 @@ function render(){
   const entWrap=$('#entWrap');
   if(!isEntity){ entWrap.hidden=true; }
   else { entWrap.hidden=false; $('#entLabel').textContent=ENTITY_LABEL[state.tab]; $('#selEntity').innerHTML=entityOptionsHTML(); }
-  $('#unitWrap').hidden = (state.tab==='coach');
+  $('#unitWrap').hidden = !!PRACTICE[state.tab];
   $('#selM').value=state.m; $('#selTo').value=state.to; $('#rangeWrap').hidden=!state.range;
   $('#rangeBtn').setAttribute('aria-pressed', String(state.range));
   $$('.seg[data-role=unit] button').forEach(b=>b.setAttribute('aria-pressed', String(b.getAttribute('data-unit')===state.unit)));
@@ -650,26 +662,28 @@ function render(){
   const p=period(), a=p[0], b=p[1], len=b-a+1;
   let html='';
 
-  if(state.tab==='coach'){
-    const S=coachSeries();
+  if(PRACTICE[state.tab]){
+    const C=PRACTICE[state.tab];
+    const S=coachSeries(C);
     const cur=coachAgg(S,a,b), prev=(a-len>=0)?coachAgg(S,a-len,a-1):null;
     const g=(k)=>prev?prev[k]:null;
-    $('#readout').innerHTML=readoutHTML('코칭반 · 연습 운영 현황', [
-      kpi('코칭반 횟수', cur.cc, g('cc'), '회'), kpi('코칭반 인원', cur.cp, g('cp'), '명'),
-      kpi('자율연습반 횟수', cur.pc, g('pc'), '회'), kpi('자율연습반 인원', cur.pp, g('pp'), '명'),
-      kpi('초급1강 인원', cur.bp, g('bp'), '명'),
+    const co=esc(C.coach), pr=esc(C.practice), ba=esc(C.base), bg=esc(C.baseGroup);
+    $('#readout').innerHTML=readoutHTML(esc(C.label)+' · 연습 운영 현황', [
+      kpi(co+' 횟수', cur.cc, g('cc'), '회'), kpi(co+' 인원', cur.cp, g('cp'), '명'),
+      kpi(pr+' 횟수', cur.pc, g('pc'), '회'), kpi(pr+' 인원', cur.pp, g('pp'), '명'),
+      kpi(ba+' 인원', cur.bp, g('bp'), '명'),
       kpi('공급 포화도 (횟수)', cur.satC, g('satC'), '%', 'rate'), kpi('공급 포화도 (인원)', cur.satP, g('satP'), '%', 'rate')
-    ], '공급 포화도 = (코칭반 + 자율연습반) ÷ 전달 초급1강 참가 인원 × 100. 기간을 여러 달로 잡으면 각 달의 전달 인원을 더해 나눕니다. 딥풀 코칭반·딥풀 자율연습반은 넣지 않았고, 0명 수업은 세지 않았습니다.');
-    lastDraw=()=>drawCoachTrend(S);
-    html+='<div class="callout"><b>공급 포화도란?</b> 초급1강을 마친 사람들에 비해 회사가 연습 수업(코칭반 + 자율연습반)을 얼마나 공급했는지 보는 지표입니다. 초급1강을 들은 다음 달에 연습하러 온다고 보고 <b>전달</b> 초급1강 참가 인원으로 나눕니다.'
-      +'<div class="fx"><span class="f">횟수 기준 = (코칭반 횟수 + 자율연습반 횟수) ÷ 전달 초급1강 인원 × 100</span><span>100%면 수료 1명당 연습 수업이 1회 열린 셈</span></div>'
-      +'<div class="fx"><span class="f">인원 기준 = (코칭반 인원 + 자율연습반 인원) ÷ 전달 초급1강 인원 × 100</span><span>300%면 수료 1명당 연습 참가가 3회 있었던 셈</span></div>'
-      +'<div class="fx"><span><b>높으면</b> 연습 자리가 넉넉해 강습 신청이 수월할 가능성이 높고, <b>낮으면</b> 자리가 부족해 신청이 어렵고 불만이 생길 가능성이 높습니다. 코칭반은 강사 수당이 나가므로 평균 인원과 함께 보세요.</span></div>'
-      +'<div class="fx muted">딥풀 코칭반·딥풀 자율연습반은 넣지 않았습니다.</div></div>';
-    html+=trendCard('코칭반 · 월별 흐름', '공급 포화도 두 판은 세로축을 값 범위에 맞춰 0부터 시작하지 않고, 점선은 전체 기간 평균입니다. 막대를 누르면 그 달로 이동합니다.', '<div class="legend"><span class="c"><i></i>횟수</span><span class="p"><i></i>인원</span></div>');
-    html+=card('월별 숫자', '위 차트와 같은 숫자입니다. 평균 인원은 수업 1회당 참가 인원이고, 선택한 기간은 진하게 표시됩니다.', coachMonthTable(S));
-    html+=card('년별 숫자', '연도별 합계입니다. 공급 포화도는 전달 초급1강 인원이 있는 달만 더해 계산합니다(2024년은 2월부터). 선택한 기간이 든 연도는 진하게 표시됩니다.', coachYearTable(S));
-    html+=card('강습장별 공급 포화도', periodLabel()+' 기준. 초급1강 인원은 그 강습장의 전달 인원입니다. 높을수록 초급1강 수료 인원에 비해 연습 수업이 넉넉히 열린 곳, 낮을수록 자리가 부족했을 가능성이 있는 곳입니다.', coachVenueTable(a,b,cur));
+    ], '공급 포화도 = ('+co+' + '+pr+') ÷ 전달 '+bg+' 참가 인원 × 100. 기간을 여러 달로 잡으면 각 달의 전달 인원을 더해 나눕니다. '+C.excl+' 0명 수업은 세지 않았습니다.');
+    lastDraw=()=>drawCoachTrend(C, S);
+    html+='<div class="callout"><b>공급 포화도란?</b> '+bg+'을 마친 사람들에 비해 회사가 연습 수업('+co+' + '+pr+')을 얼마나 공급했는지 보는 지표입니다. '+C.baseDesc
+      +'<div class="fx"><span class="f">횟수 기준 = ('+co+' 횟수 + '+pr+' 횟수) ÷ 전달 '+bg+' 인원 × 100</span><span>100%면 수료 1명당 연습 수업이 1회 열린 셈</span></div>'
+      +'<div class="fx"><span class="f">인원 기준 = ('+co+' 인원 + '+pr+' 인원) ÷ 전달 '+bg+' 인원 × 100</span><span>300%면 수료 1명당 연습 참가가 3회 있었던 셈</span></div>'
+      +'<div class="fx"><span><b>높으면</b> 연습 자리가 넉넉해 강습 신청이 수월할 가능성이 높고, <b>낮으면</b> 자리가 부족해 신청이 어렵고 불만이 생길 가능성이 높습니다. '+co+'은 강사 수당이 나가므로 평균 인원과 함께 보세요.</span></div>'
+      +'<div class="fx muted">'+C.excl+'</div></div>';
+    html+=trendCard(esc(C.label)+' · 월별 흐름', '공급 포화도 두 판은 세로축을 값 범위에 맞춰 0부터 시작하지 않고, 점선은 전체 기간 평균입니다. 막대를 누르면 그 달로 이동합니다.', '<div class="legend"><span class="c"><i></i>횟수</span><span class="p"><i></i>인원</span></div>');
+    html+=card('월별 숫자', '위 차트와 같은 숫자입니다. 평균 인원은 수업 1회당 참가 인원이고, 선택한 기간은 진하게 표시됩니다.', coachMonthTable(C, S));
+    html+=card('년별 숫자', '연도별 합계입니다. 공급 포화도는 전달 '+ba+' 인원이 있는 달만 더해 계산합니다(2024년은 2월부터). 선택한 기간이 든 연도는 진하게 표시됩니다.', coachYearTable(C, S));
+    html+=card('강습장별 공급 포화도', periodLabel()+' 기준. '+ba+' 인원은 그 강습장의 전달 인원입니다. 높을수록 '+bg+' 수료 인원에 비해 연습 수업이 넉넉히 열린 곳, 낮을수록 자리가 부족했을 가능성이 있는 곳입니다.', coachVenueTable(C, a, b, cur));
   } else {
     const pred=entityPred();
     const cur=kpis(pred,a,b), prev=(a-len>=0)?kpis(pred,a-len,a-1):null;
