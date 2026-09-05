@@ -102,7 +102,14 @@ main .wrap{padding-top:20px;padding-bottom:28px;display:grid;gap:16px}
 .trend .yr{font-size:11px;fill:var(--ink);font-weight:700}
 .trend .hit{fill:transparent;cursor:pointer}
 .trend .hit:hover{fill:rgba(16,40,58,.06)}
-.trend .lab{font-size:10.5px;fill:var(--ink);font-weight:600}
+.trend .lab{font-size:10.5px;fill:var(--ink);font-weight:600;paint-order:stroke;stroke:var(--card);stroke-width:3px}
+.trend .avg{font-size:10.5px;fill:var(--ink-2);paint-order:stroke;stroke:var(--card);stroke-width:3px}
+
+/* 설명 콜아웃 */
+.callout{background:var(--water-soft);border:1px solid #BFDCE8;border-left:4px solid var(--water);border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.6}
+.callout b{color:var(--water-ink)}
+.callout .fx{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.callout .f{background:#fff;border:1px solid var(--line);border-radius:6px;padding:1px 8px;white-space:nowrap;font-weight:600;color:var(--ink)}
 
 /* 가로 막대 목록 */
 .bl{display:grid;gap:7px}
@@ -432,13 +439,13 @@ function gridTable(id, cols, rows, total, opts){
 function drawPanels(el, panels, tipFn){
   if(!el) return;
   const W=Math.max(320, el.clientWidth||600);
-  const padL=48, padR=12, top=8, bottom=30, titleH=20, groupH=30, gapH=12;
+  const padL=48, padR=12, top=8, bottom=30, titleH=20, groupH=40, gapH=12;
   const n=NM, innerW=W-padL-padR, step=innerW/n, bw=Math.max(2, Math.min(18, step*0.62));
   const p=period(), a=p[0], b=p[1];
   const nice=v=>{ if(v<=0) return 1; const e=Math.pow(10,Math.floor(Math.log10(v))); const f=v/e; return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*e; };
   let y=top, lastGroup=null; const items=[];
   panels.forEach(pn=>{
-    if(pn.group && pn.group!==lastGroup){ y+=groupH; items.push({type:'group', label:pn.group, y:y-10}); lastGroup=pn.group; }
+    if(pn.group && pn.group!==lastGroup){ items.push({type:'group', label:pn.group, top:y, first:lastGroup===null, y:y+groupH-10}); y+=groupH; lastGroup=pn.group; }
     y+=titleH; const h=pn.h||64; items.push({type:'panel', pn:pn, y0:y, h:h}); y+=h+gapH;
   });
   const H=y-gapH+bottom;
@@ -446,15 +453,25 @@ function drawPanels(el, panels, tipFn){
   s+='<rect x="'+(padL+a*step)+'" y="'+top+'" width="'+((b-a+1)*step)+'" height="'+(H-bottom-top)+'" rx="4" fill="var(--sel-band)"/>';
   items.forEach(it=>{
     if(it.type==='group'){
+      if(!it.first) s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+(it.top+4)+'" y2="'+(it.top+4)+'" stroke="var(--line)" stroke-width="1.5"/>';
       s+='<text x="'+padL+'" y="'+it.y+'" class="grp">'+esc(it.label)+'</text>';
       return;
     }
     const pn=it.pn, base=it.y0+it.h, vals=pn.values, f=pn.fmt||fmt;
-    let mx=0; vals.forEach(v=>{ if(v!=null && v>mx) mx=v; });
-    const max=nice(mx), yOf=v=>base - v/max*it.h;
-    [0.5,1].forEach(fr=>{ const yy=yOf(max*fr); s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--line-2)"/><text x="'+(padL-6)+'" y="'+(yy+3.5)+'" text-anchor="end" class="ax">'+f(max*fr)+'</text>'; });
+    let mx=-Infinity, mn=Infinity; vals.forEach(v=>{ if(v==null) return; if(v>mx) mx=v; if(v<mn) mn=v; });
+    if(mx===-Infinity){ mx=1; mn=0; }
+    let lo=0, hi=nice(mx), ticks=[hi*0.5, hi];
+    if(pn.fit){                                   // 축을 값 범위에 맞춤 (0부터 시작하지 않음)
+      const span=Math.max(mx-mn, Math.abs(mx)*0.1, 1e-9), stepV=nice(span/5);
+      lo=Math.max(0, Math.floor((mn-span*0.1)/stepV)*stepV); hi=Math.ceil((mx+span*0.1)/stepV)*stepV;
+      if(hi<=lo) hi=lo+stepV;
+      ticks=[]; for(let t=lo; t<=hi+1e-9; t+=stepV) ticks.push(t);
+    }
+    const yOf=v=>base - (v-lo)/(hi-lo)*it.h;
+    ticks.forEach(t=>{ const yy=yOf(t); s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--line-2)"/><text x="'+(padL-6)+'" y="'+(yy+3.5)+'" text-anchor="end" class="ax">'+f(t)+'</text>'; });
     s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+base+'" y2="'+base+'" stroke="var(--line)"/>';
     s+='<text x="'+padL+'" y="'+(it.y0-6)+'" class="ax-title">'+esc(pn.label)+'</text>';
+    if(pn.avg!=null){ const yy=yOf(pn.avg); s+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--ink-3)" stroke-dasharray="4 3"/><text x="'+(W-padR)+'" y="'+(yy-5)+'" text-anchor="end" class="avg">전체 평균 '+f(pn.avg)+'</text>'; }
     if(pn.kind==='line'){
       let d='', pen=false; const pts=[];
       vals.forEach((v,i)=>{ if(v==null){ pen=false; return; } const x=padL+i*step+step/2, yy=yOf(v); d+=(pen?'L':'M')+x.toFixed(1)+' '+yy.toFixed(1); pen=true; pts.push([i,x,yy,v]); });
@@ -492,7 +509,9 @@ function drawTrend(series){
   });
 }
 function drawCoachTrend(S){
-  const pct = v => fmt1(v)+'%';
+  const pct = v => (Math.abs(v-Math.round(v))<1e-9 ? fmt(v) : fmt1(v))+'%';
+  const mean = arr => { const v=arr.filter(x=>x!=null); return v.length ? v.reduce((p,q)=>p+q,0)/v.length : null; };
+  const satC=S.map(d=>d.satC), satP=S.map(d=>d.satP);
   drawPanels($('#trend'), [
     {group:'코칭반', label:'운영 횟수', values:S.map(d=>d.cc), color:'var(--water)'},
     {group:'코칭반', label:'참가 인원', values:S.map(d=>d.cp), color:'var(--buoy)'},
@@ -500,8 +519,8 @@ function drawCoachTrend(S){
     {group:'자율연습반', label:'참가 인원', values:S.map(d=>d.pp), color:'var(--buoy)'},
     {group:'초급 1강', label:'운영 횟수', values:S.map(d=>d.bc), color:'var(--water)'},
     {group:'초급 1강', label:'참가 인원', values:S.map(d=>d.bp), color:'var(--buoy)'},
-    {group:'코칭반 + 자율연습반 포화도 (전달 초급1강 참가 인원 대비)', label:'횟수 포화도', values:S.map(d=>d.satC), color:'var(--water)', kind:'line', fmt:pct, h:72},
-    {group:'코칭반 + 자율연습반 포화도 (전달 초급1강 참가 인원 대비)', label:'인원 포화도', values:S.map(d=>d.satP), color:'var(--buoy)', kind:'line', fmt:pct, h:72}
+    {group:'코칭반 + 자율연습반 포화도 (전달 초급1강 참가 인원 대비)', label:'횟수 포화도', values:satC, color:'var(--water)', kind:'line', fmt:pct, h:150, fit:true, avg:mean(satC)},
+    {group:'코칭반 + 자율연습반 포화도 (전달 초급1강 참가 인원 대비)', label:'인원 포화도', values:satP, color:'var(--buoy)', kind:'line', fmt:pct, h:150, fit:true, avg:mean(satP)}
   ], i=>{ const d=S[i];
     return '<b>'+mLabel(D.months[i])+'</b>코칭반 '+fmt(d.cc)+'회 · '+fmt(d.cp)+'명<br>자율연습반 '+fmt(d.pc)+'회 · '+fmt(d.pp)+'명<br>초급1강 '+fmt(d.bc)+'회 · '+fmt(d.bp)+'명'
       +'<br><span class="dim">전달 초급1강 '+(d.den==null?'—':fmt(d.den)+'명')+'</span>'
@@ -603,7 +622,11 @@ function render(){
       kpi('횟수 포화도', cur.satC, g('satC'), '%', 'rate'), kpi('인원 포화도', cur.satP, g('satP'), '%', 'rate')
     ], '포화도 = (코칭반 + 자율연습반) ÷ 전달 초급1강 참가 인원 × 100. 기간을 여러 달로 잡으면 각 달의 전달 인원을 더해 나눕니다. 딥풀 코칭반·딥풀 자율연습반은 넣지 않았고, 0명 수업은 세지 않았습니다.');
     lastDraw=()=>drawCoachTrend(S);
-    html+=trendCard('코칭반 · 월별 흐름', '코칭반과 자율연습반이 초급1강 수료 인원에 비해 얼마나 열리고 채워지는지. 막대를 누르면 그 달로 이동합니다.', '<div class="legend"><span class="c"><i></i>횟수</span><span class="p"><i></i>인원</span></div>');
+    html+='<div class="callout"><b>포화도란?</b> 초급1강을 마친 사람들에 비해 연습 수업(코칭반 + 자율연습반)이 얼마나 열리고 채워졌는지 보는 지표입니다. 초급1강을 들은 다음 달에 연습하러 온다고 보고 <b>전달</b> 초급1강 참가 인원으로 나눕니다.'
+      +'<div class="fx"><span class="f">횟수 포화도 = (코칭반 횟수 + 자율연습반 횟수) ÷ 전달 초급1강 인원 × 100</span><span>100%면 수료 1명당 연습 수업이 1회 열린 셈</span></div>'
+      +'<div class="fx"><span class="f">인원 포화도 = (코칭반 인원 + 자율연습반 인원) ÷ 전달 초급1강 인원 × 100</span><span>300%면 수료 1명당 연습 참가가 3회 있었던 셈</span></div>'
+      +'<div class="fx muted">코칭반은 강사 수당이 나가는 수업이고 자율연습반은 나가지 않습니다. 딥풀 코칭반·딥풀 자율연습반은 넣지 않았습니다.</div></div>';
+    html+=trendCard('코칭반 · 월별 흐름', '포화도 두 판은 세로축을 값 범위에 맞춰 0부터 시작하지 않고, 점선은 전체 기간 평균입니다. 막대를 누르면 그 달로 이동합니다.', '<div class="legend"><span class="c"><i></i>횟수</span><span class="p"><i></i>인원</span></div>');
     html+=card('월별 숫자', '위 차트와 같은 숫자입니다. 선택한 기간은 진하게 표시됩니다.', coachMonthTable(S));
     html+=card('강습장별 포화도', periodLabel()+' 기준. 초급1강 인원은 그 강습장의 전달 인원입니다. 포화도가 높을수록 초급1강 수료 인원에 비해 연습 수업이 많이 열린 곳입니다.', coachVenueTable(a,b,cur));
   } else {
