@@ -1,0 +1,11 @@
+# 원본 엑셀 (공개 저장소에 올리지 않음)
+data/raw/
+# 평문 빌드 결과
+dist/
+# StatiCrypt salt / 비밀번호 관련
+.staticrypt.json
+# 도구
+node_modules/
+__pycache__/
+.pytest_cache/
+*.pyc
